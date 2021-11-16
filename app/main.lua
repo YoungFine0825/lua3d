@@ -5,11 +5,18 @@
 ---程序主入口，以及love2d相关的生命周期回调
 
 require("const")
+require("classlib")
 require("mathlib")
+require("render")
+
+local bgColor = Color.raywhite
+---@type Renderer
+local renderer = classLib.Renderer.new()
 
 local function start()
     love.window.setTitle("Lua 3d Pipeline")
     love.window.setMode(SCREEN_WIDTH, SCREEN_HEIGHT, {resizable=true, vsync=false})
+    renderer:Init(PIXEL_WIDTH,PIXEL_HEIGHT)
 end
 
 function love.load()
@@ -21,6 +28,8 @@ function love.update(dt)
 end
 
 function love.draw()
+    love.graphics.clear( bgColor.r, bgColor.g, bgColor.b, 1)
+    love.graphics.setColor(1,0,0,1)
     love.graphics.print("hello world!")
 end
 

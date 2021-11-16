@@ -4,4 +4,18 @@
 --- DateTime: 2021/11/15 20:39
 ---数学库入口
 
+---@public obj table
+---@return string
+typeof = function(obj)
+    local rawType = type(obj)
+    if rawType == 'table' and obj.__type then
+        return obj.__type
+    else
+        return rawType
+    end
+end
+
+require('mathlib/vector2')
 require('mathlib/vector3')
+require('mathlib/vector4')
+require('mathlib/matrix4x4')
