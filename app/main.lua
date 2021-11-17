@@ -9,28 +9,85 @@ require("classlib")
 require("mathlib")
 require("render")
 
+local loveGraphics = love.graphics
+local loveTimer = love.timer
+local deltaTime = 0
+local fpsStrT = {'Fps: ',0}
 local bgColor = Color.raywhite
+local winWid = SCREEN_WIDTH
+local winHei = SCREEN_HEIGHT
 ---@type Renderer
 local renderer = classLib.Renderer.new()
 
+local near = 1
+local far = 10
+local fov = 60
+local aspect = winWid / winHei
+local projectionMat = matrix4x4.perspective(math.rad(fov),aspect,near,far)
+
+local cubeTrans = matrix4x4.identity()
+local cubeRotate = matrix4x4.identity()
+local cubeYaw = 0
+
 local function start()
     love.window.setTitle("Lua 3d Pipeline")
-    love.window.setMode(SCREEN_WIDTH, SCREEN_HEIGHT, {resizable=true, vsync=false})
+    love.window.setMode(winWid, winHei, {resizable=false, vsync=false})
     renderer:Init(PIXEL_WIDTH,PIXEL_HEIGHT)
 end
 
 function love.load()
-
+    ---@type VertexObject
+    local cubeVertexObj = classLib.VertexObject.new()
+    cubeVertexObj:SetVerticesData({
+        0.5,    0.5,    0.5,--正面右上 1
+        0.5,    -0.5,   0.5,--正面右下 2
+        -0.5,   -0.5,   0.5,--正面左下 3
+        -0.5,   0.5,    0.5,--正面左上 4
+        0.5,    0.5,    -0.5,--反面右上 5
+        0.5,    -0.5,   -0.5,--反面右下 6
+        -0.5,   -0.5,   -0.5,--反面左下 7
+        -0.5,   0.5,    -0.5,--反面左上 8
+    })
+    cubeVertexObj:SetVerticesNumber(8)
+    cubeVertexObj:SetIndicesData({
+        1,2,3,3,4,1,--正面两个三角形
+        1,5,6,2,1,6, --右侧两个三角形
+        5,6,7,8,5,7, --背面两个三角形
+        4,8,7,4,3,7, --左侧两个三角形
+        4,1,5,4,8,5,--顶部两个三角形
+        3,2,6,3,7,6,--底部两个三角形
+    })
+    cubeVertexObj:SetTrianglesNumber(12)
+    cubeVertexObj:SetLayout(1,0,3,3)
+    renderer:BindVertexObject(cubeVertexObj)
+    --
+    cubeTrans[3][4] = -2--z轴位移
 end
 
 function love.update(dt)
-
+    deltaTime = deltaTime + dt
+    --
+    cubeTrans[3][4] = -3 + math.abs( math.cos(deltaTime) )
+    ----
+    cubeYaw = cubeYaw + 20 * dt
+    local angleInRad = math.rad(cubeYaw )
+    cubeRotate[1][1] = math.cos(angleInRad)
+    cubeRotate[3][1] = math.sin(angleInRad)
+    cubeRotate[1][3] = math.sin(angleInRad) * -1
+    cubeRotate[3][3] = math.cos(angleInRad)
+    --
+    renderer:SetMVPMatrix(projectionMat * cubeTrans * cubeRotate)
+    --
 end
 
 function love.draw()
-    love.graphics.clear( bgColor.r, bgColor.g, bgColor.b, 1)
-    love.graphics.setColor(1,0,0,1)
-    love.graphics.print("hello world!")
+    renderer:ClearPixelBuffer(bgColor)
+    renderer:Draw()
+    renderer:OutputPixelBuffer(winWid,winHei)
+    --
+    loveGraphics.setColor(1,0,0,1)
+    fpsStrT[2] = loveTimer.getFPS()
+    loveGraphics.print(table.concat(fpsStrT,''))
 end
 
 do start() end

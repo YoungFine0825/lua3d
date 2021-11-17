@@ -62,7 +62,7 @@ function matrix4x4.combine(vec1,vec2,vec3,vec4)
     return matrix
 end
 
----@public 创建一个对角单位方阵
+---@public 创建一个单位矩阵
 ---@return matrix4x4
 function matrix4x4.identity()
     local matrix = {
@@ -75,7 +75,7 @@ function matrix4x4.identity()
     return matrix
 end
 
----@private
+---@public
 function matrix4x4.mulXYZW(matrix,x,y,z,w)
     local outX = x * matrix[1][1] + y * matrix[1][2] + z * matrix[1][3] + w * matrix[1][4]
     local outY = x * matrix[2][1] + y * matrix[2][2] + z * matrix[2][3] + w * matrix[2][4]
@@ -111,7 +111,7 @@ function matrix4x4.mulVector(matrix,vector)
     return vector4.new(x,y,z,w)
 end
 
----@public
+---@public 标量乘
 ---@param matrix matrix4x4
 ---@param scalar number
 ---@return matrix4x4
@@ -121,6 +121,42 @@ function matrix4x4.mulScalar(matrix,scalar)
             matrix[2][1] * scalar,matrix[2][2] * scalar,matrix[2][3] * scalar,matrix[2][4] * scalar,
             matrix[3][1] * scalar,matrix[3][2] * scalar,matrix[3][3] * scalar,matrix[3][4] * scalar,
             matrix[4][1] * scalar,matrix[4][2] * scalar,matrix[4][3] * scalar,matrix[4][4] * scalar
+    )
+    return ret
+end
+
+---@public 转置
+---@param matrix matrix4x4
+---@return matrix4x4
+function matrix4x4.transpose(matrix)
+    local ret = matrix4x4.new(
+            matrix[1][1],matrix[2][1],matrix[3][1],matrix[4][1],
+            matrix[1][2],matrix[2][2],matrix[3][2],matrix[4][2],
+            matrix[1][3],matrix[2][3],matrix[3][3],matrix[4][3],
+            matrix[1][4],matrix[2][4],matrix[3][4],matrix[4][4]
+    )
+    return ret
+end
+
+---@public 正交投影
+function matrix4x4.orthographice(size,near,far)
+    local ret = matrix4x4.new(
+            2 / size,0,0,0,
+            0,2 / size,0,0,
+            0,0,2 / (near - far),(near + far)/(near - far) * -1,
+            0,0,0,1
+    )
+    return ret
+end
+
+---@public 透视投影
+function matrix4x4.perspective(fov,aspect,near,far)
+    local cotFov = 1 / luaMath.tan( fov / 2 )
+    local ret = matrix4x4.new(
+           cotFov / aspect,0,0,0,
+            0,cotFov,0,0,
+            0,0,(near + far) / (near - far) * -1,(2 * near * far)/(near - far) * -1,
+            0,0,-1,0
     )
     return ret
 end
