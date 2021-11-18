@@ -50,25 +50,25 @@ function love.load()
     })
     cubeVertexObj:SetVerticesNumber(8)
     cubeVertexObj:SetIndicesData({
-        1,2,3,3,4,1,--正面两个三角形
-        1,5,6,2,1,6, --右侧两个三角形
-        5,6,7,8,5,7, --背面两个三角形
-        4,8,7,4,3,7, --左侧两个三角形
-        4,1,5,4,8,5,--顶部两个三角形
-        3,2,6,3,7,6,--底部两个三角形
+        4,1,2,4,2,3,--正面两个三角形
+        1,5,6,1,6,2, --右侧两个三角形
+        5,8,7,5,7,6, --背面两个三角形
+        8,4,3,8,3,7, --左侧两个三角形
+        8,5,1,8,1,4,--顶部两个三角形
+        3,2,6,3,6,7,--底部两个三角形
     })
     cubeVertexObj:SetTrianglesNumber(12)
     cubeVertexObj:SetLayout(1,0,3,3)
     renderer:BindVertexObject(cubeVertexObj)
+    renderer:SetProjectionMatrix(projectionMat)
     --
-    cubeTrans[3][4] = -2--z轴位移
 end
 
 function love.update(dt)
     deltaTime = deltaTime + dt
     --
     cubeTrans[3][4] = -3 + math.abs( math.cos(deltaTime) )
-    ----
+    ------
     cubeYaw = cubeYaw + 20 * dt
     local angleInRad = math.rad(cubeYaw )
     cubeRotate[1][1] = math.cos(angleInRad)
@@ -76,7 +76,7 @@ function love.update(dt)
     cubeRotate[1][3] = math.sin(angleInRad) * -1
     cubeRotate[3][3] = math.cos(angleInRad)
     --
-    renderer:SetMVPMatrix(projectionMat * cubeTrans * cubeRotate)
+    renderer:SetModelViewMatrix(cubeTrans * cubeRotate)
     --
 end
 

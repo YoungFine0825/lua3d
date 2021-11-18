@@ -8,6 +8,10 @@ local luaMath = math
 local luaPrint = print
 local luaTable = table
 
+local vec3 = vector3
+local vec4 = vector4
+local mat4x4 = matrix4x4
+
 ---@class Renderer
 local Renderer = declareClass("Renderer")
 
@@ -25,11 +29,12 @@ function Renderer:ctor()
     ---@type VertexObject
     self.vertexObject = nil
 
-    ---@type matrix4x4
-    self.mvpMatrix = matrix4x4.identity()
+    self.modelViewMatrix = mat4x4.identity()
+
+    self.projectionMatrix = mat4x4.identity()
 
     ---@type matrix4x4
-    self.screenMatrix = matrix4x4.identity()
+    self.screenMatrix = mat4x4.identity()
 end
 
 ---@public
@@ -61,11 +66,14 @@ function Renderer:SetPixelDimension(width,height)
             0,0,0,0
     )
 end
+---@public
+function Renderer:SetModelViewMatrix(modelViewMatrix)
+    self.modelViewMatrix = modelViewMatrix
+end
 
 ---@public
----@param matrix matrix4x4
-function Renderer:SetMVPMatrix(matrix)
-    self.mvpMatrix = matrix
+function Renderer:SetProjectionMatrix(projectionMatrix)
+    self.projectionMatrix = projectionMatrix
 end
 
 ---@public
@@ -111,7 +119,7 @@ function Renderer:OutputPixelBuffer(viewWidth,viewHeight)
             local p = self.pixelBuffer[x][y]
             loveGraphics.setColor(p[1],p[2],p[3],1)
             --
-            loveGraphics.points(x * pW,y * pH)
+            loveGraphics.points(x * pW + pW / 2,y * pH + pH / 2)
         end
     end
 end
@@ -121,30 +129,108 @@ function Renderer:Draw()
     if not self.vertexObject then
         return
     end
-    local vec4 = vector4
-    local mat4x4 = matrix4x4
     local verticeNum = self.vertexObject.verticesNumber
-    local screenPos = {}
+    local indicesData = self.vertexObject.indicesData
+    local viewSpaceVertices = {}
+    local clipSpaceVertices = {}
+    local screenSpacePos = {}
+    local visableVertices = {}
+    local visableTriangles = {}
+    --将所有顶点转换到观察空间
     for vertexIdx = 1,verticeNum do
         local point = self.vertexObject:GetVertexData(1,vertexIdx)
         local vertex = vec4.new(point[1],point[2],point[3],1)
-        local clipPos = self.mvpMatrix * vertex
+        viewSpaceVertices[vertexIdx] = self.modelViewMatrix * vertex
+    end
+    --剔除背面的三角形
+    for triIdx = 0,self.vertexObject.trianglesNumber - 1 do
+        local startIdx = triIdx * 3
+        local vertexIdx1 = indicesData[startIdx + 1]
+        local vertexIdx2 = indicesData[startIdx + 2]
+        local vertexIdx3 = indicesData[startIdx + 3]
+        local p1 = viewSpaceVertices[ vertexIdx1 ]
+        local p2 = viewSpaceVertices[ vertexIdx2 ]
+        local p3 = viewSpaceVertices[ vertexIdx3 ]
+        local p12 = p2 - p1
+        local p13 = p3 - p1
+        local vertical = vec3.cross(p12,p13)
+        local toOri = vec3.new(0 - p1.x,0 - p1.y,0 - p1.z)
+        local dot = vec3.dot(vertical,toOri)
+        if dot < 0 then
+            visableTriangles[#visableTriangles + 1] = triIdx
+            visableVertices[vertexIdx1] = 1
+            visableVertices[vertexIdx2] = 1
+            visableVertices[vertexIdx3] = 1
+        end
+    end
+    --将顶点转换到裁剪空间和屏幕空间
+    for vertexIdx in pairs(visableVertices) do
+        local clipPos = self.projectionMatrix * viewSpaceVertices[vertexIdx]
+        clipSpaceVertices[vertexIdx] = clipPos
         local canonical = clipPos:toVector3()
         local screenX,screenY = mat4x4.mulXYZW(self.screenMatrix,canonical.x,canonical.y,0,1)
-        screenPos[vertexIdx] = {luaMath.floor(screenX),luaMath.floor(screenY)}
+        screenSpacePos[vertexIdx] = {x = luaMath.floor(screenX),y = luaMath.floor(screenY)}
     end
-    --
-    local indicesData = self.vertexObject.indicesData
-    for triIdx = 1,self.vertexObject.trianglesNumber do
-        local startIdx = (triIdx - 1) * 3
-        local p1 = screenPos[ indicesData[startIdx + 1] ]
-        local p2 = screenPos[ indicesData[startIdx + 2] ]
-        local p3 = screenPos[ indicesData[startIdx + 3] ]
-        self:DrawLine(p1[1],p1[2],p2[1],p2[2])
-        self:DrawLine(p2[1],p2[2],p3[1],p3[2])
-        self:DrawLine(p3[1],p3[2],p1[1],p1[2])
+    --光栅化三角形
+    for i = 1,#visableTriangles do
+        local startIdx = visableTriangles[i] * 3
+        local p1 = screenSpacePos[ indicesData[startIdx + 1] ]
+        local p2 = screenSpacePos[ indicesData[startIdx + 2] ]
+        local p3 = screenSpacePos[ indicesData[startIdx + 3] ]
+        self:TriangleRasterization(p1,p2,p3)
     end
 end
+
+---@private
+function Renderer:TriangleRasterization(p1,p2,p3)
+    local minX,maxX,minY,maxY = self:CalcuTriangleBound(p1,p2,p3)
+    local f23 = function(x,y) return self:CalcuBarycentricCoord(p2,p3,x,y) end
+    local f31 = function(x,y) return self:CalcuBarycentricCoord(p3,p1,x,y) end
+    local f12 = function(x,y) return self:CalcuBarycentricCoord(p1,p2,x,y) end
+    local alpha = f23(p1.x,p1.y)
+    local beta  = f31(p2.x,p2.y)
+    local gamma = f12(p3.x,p3.y)
+    for y = minY,maxY do
+        for x = minX,maxX do
+            local a = f23(x,y) / alpha
+            local b = f31(x,y) / beta
+            local c = f12(x,y) / gamma
+            if a >= 0 and b >= 0 and c >= 0 then
+                self:WritePixel(x,y,0.5,0.5,1)
+            end
+        end
+    end
+end
+
+---@private
+function Renderer:CalcuTriangleBound(...)
+    local minX = 0
+    local maxX = 0
+    local minY = 0
+    local maxY = 0
+    for idx,point in pairs({...}) do
+        if point.x < minX then
+            minX = point.x
+        end
+        if point.x > maxX then
+            maxX = point.x
+        end
+        if point.y < minY then
+            minY = point.y
+        end
+        if point.y > maxY then
+            maxY = point.y
+        end
+    end
+    return luaMath.floor(minX),luaMath.ceil(maxX),luaMath.floor(minY),luaMath.ceil(maxY)
+end
+
+---@private
+function Renderer:CalcuBarycentricCoord(triP1,triP2,pixelX,pixelY)
+    local ret = (triP1.y - triP2.y) * pixelX + (triP2.x - triP1.x) * pixelY + triP1.x * triP2.y - triP1.y * triP2.x
+    return ret
+end
+
 
 ---@public
 function Renderer:DrawLine(x0,y0,x1,y1)
@@ -166,7 +252,7 @@ function Renderer:DrawLine(x0,y0,x1,y1)
     local deltax = x1 - x0
     local deltay = luaMath.abs(y1 - y0)
     local error = 0
-    local deltaerr = deltay / deltax
+    local slope = deltay / deltax
     local ystep = 0
     local y = y0
     if y0 < y1 then ystep = 1 else ystep = -1 end
@@ -176,13 +262,12 @@ function Renderer:DrawLine(x0,y0,x1,y1)
         else
             self:WritePixel(x,y,1,0,0)
         end
-        error = error + deltaerr
+        error = error + slope
         if error >= 0.5 then
             y = y + ystep
             error = error - 1
         end
     end
 end
-
 
 return Renderer
