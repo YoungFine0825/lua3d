@@ -8,6 +8,7 @@ local luaMath = math
 local luaPrint = print
 local luaTable = table
 
+local vec2 = vector2
 local vec3 = vector3
 local vec4 = vector4
 local mat4x4 = matrix4x4
@@ -29,12 +30,24 @@ function Renderer:ctor()
     ---@type VertexObject
     self.vertexObject = nil
 
-    self.modelViewMatrix = mat4x4.identity()
+    self.viewMatrix = mat4x4.identity()
 
     self.projectionMatrix = mat4x4.identity()
 
     ---@type matrix4x4
     self.screenMatrix = mat4x4.identity()
+
+    ---@type Shader
+    self.shader = nil
+
+    ---@type boolean
+    self.canDrawing = false
+
+    ---@type boolean
+    self.enabledAlphaBlend = true
+
+    ---@type boolean
+    self.enabledDepthWrite = true
 end
 
 ---@public
@@ -59,7 +72,7 @@ function Renderer:SetPixelDimension(width,height)
     self.pixelBufferWidth = width
     self.pixelBufferHeight = height
     self.pixelAspect = width / height
-    self.screenMatrix = matrix4x4.new(
+    self.screenMatrix = mat4x4.new(
             width / 2,0,0,width/2,
             0,height / 2 * -1,0,height / 2,
             0,0,0,0,
@@ -67,8 +80,8 @@ function Renderer:SetPixelDimension(width,height)
     )
 end
 ---@public
-function Renderer:SetModelViewMatrix(modelViewMatrix)
-    self.modelViewMatrix = modelViewMatrix
+function Renderer:SetViewMatrix(viewMatrix)
+    self.viewMatrix = viewMatrix
 end
 
 ---@public
@@ -82,6 +95,12 @@ function Renderer:BindVertexObject(vertexObject)
 end
 
 ---@public
+---@param shader Shader
+function Renderer:BindShader(shader)
+    self.shader = shader
+end
+
+---@public
 ---@param color Color
 function Renderer:ClearPixelBuffer(color)
     for x = 0,self.pixelBufferWidth - 1 do
@@ -90,11 +109,12 @@ function Renderer:ClearPixelBuffer(color)
             p[1] = color.r
             p[2] = color.g
             p[3] = color.b
+            self.depthBuffer[x][y] = 0
         end
     end
 end
 
----@public
+---@private
 function Renderer:WritePixel(x,y,r,g,b)
     if not self.pixelBuffer[x] then
         return
@@ -119,30 +139,57 @@ function Renderer:OutputPixelBuffer(viewWidth,viewHeight)
             local p = self.pixelBuffer[x][y]
             loveGraphics.setColor(p[1],p[2],p[3],1)
             --
-            loveGraphics.points(x * pW + pW / 2,y * pH + pH / 2)
+            loveGraphics.points(x * pW + pW / 2 ,y * pH + pH / 2)
         end
     end
 end
 
+---@private
+function Renderer:WriteDethBuffer(x,y,depth)
+    self.depthBuffer[x][y] = depth
+end
+
+---@public 是否开启alpha融合
+---@param enable boolean
+function Renderer:EnableAlphaBlend(enable)
+    self.enabledAlphaBlend = enable
+end
+
+---@public 是否开启深度写入
+---@param enable boolean
+function Renderer:EnableDepthWrite(enable)
+    self.enabledDepthWrite = enable
+end
+
 ---@public
 function Renderer:Draw()
-    if not self.vertexObject then
+    self.canDrawing = self.vertexObject ~= nil and self.shader ~= nil
+    if not  self.canDrawing then
         return
     end
+    --
+    if self.shader then
+        --渲染前，传入一些shader需要的数据
+        self.shader:SetMVPMatrix(self.projectionMatrix * self.viewMatrix)
+        self.shader:SetVertexObject(self.vertexObject)
+        --让Shader根据需求设置渲染状态
+        self.shader:SetRenderState(self)
+    end
+    --
     local verticeNum = self.vertexObject.verticesNumber
     local indicesData = self.vertexObject.indicesData
     local viewSpaceVertices = {}
-    local clipSpaceVertices = {}
-    local screenSpacePos = {}
     local visableVertices = {}
     local visableTriangles = {}
+    local vertexShaderOutputList = {}
+    --
     --将所有顶点转换到观察空间
     for vertexIdx = 1,verticeNum do
         local point = self.vertexObject:GetVertexData(1,vertexIdx)
         local vertex = vec4.new(point[1],point[2],point[3],1)
-        viewSpaceVertices[vertexIdx] = self.modelViewMatrix * vertex
+        viewSpaceVertices[vertexIdx] = self.viewMatrix * vertex
     end
-    --剔除背面的三角形
+    --在观察空间中，剔除背面的三角形
     for triIdx = 0,self.vertexObject.trianglesNumber - 1 do
         local startIdx = triIdx * 3
         local vertexIdx1 = indicesData[startIdx + 1]
@@ -153,81 +200,154 @@ function Renderer:Draw()
         local p3 = viewSpaceVertices[ vertexIdx3 ]
         local p12 = p2 - p1
         local p13 = p3 - p1
-        local vertical = vec3.cross(p12,p13)
-        local toOri = vec3.new(0 - p1.x,0 - p1.y,0 - p1.z)
-        local dot = vec3.dot(vertical,toOri)
-        if dot < 0 then
+        --通过叉乘取三角形的法线。（我们使用的是右手坐标系)
+        --p12 X p13
+        local crossX = p12.y * p13.z - p12.z * p13.y
+        local crossY = p12.z * p13.x - p12.x * p13.z
+        local crossZ = p12.x * p13.y - p12.y * p13.x
+        --通过点乘取三角形法线与三角形第一个点到原点的方向向量的夹角
+        local dot = crossX * (0 - p1.x) + crossY * (0 - p1.y) + crossZ * (0 - p1.z)
+        if dot < 0 then--夹角大于90度，表示该三角形面向视点，需要渲染出来
             visableTriangles[#visableTriangles + 1] = triIdx
             visableVertices[vertexIdx1] = 1
             visableVertices[vertexIdx2] = 1
             visableVertices[vertexIdx3] = 1
         end
     end
-    --将顶点转换到裁剪空间和屏幕空间
+    --执行顶点着色器，着色器应当返回顶点的裁剪空间坐标
     for vertexIdx in pairs(visableVertices) do
-        local clipPos = self.projectionMatrix * viewSpaceVertices[vertexIdx]
-        clipSpaceVertices[vertexIdx] = clipPos
-        local canonical = clipPos:toVector3()
-        local screenX,screenY = mat4x4.mulXYZW(self.screenMatrix,canonical.x,canonical.y,0,1)
-        screenSpacePos[vertexIdx] = {x = luaMath.floor(screenX),y = luaMath.floor(screenY)}
+        self.shader:SetCurVertexIndex(vertexIdx)
+        ---@type VertexShaderOutput
+        local vertexShaderOutput = self.shader:VertexShader()
+        if vertexShaderOutput.clipPos then
+            vertexShaderOutputList[vertexIdx] = vertexShaderOutput
+        end
     end
     --光栅化三角形
     for i = 1,#visableTriangles do
         local startIdx = visableTriangles[i] * 3
-        local p1 = screenSpacePos[ indicesData[startIdx + 1] ]
-        local p2 = screenSpacePos[ indicesData[startIdx + 2] ]
-        local p3 = screenSpacePos[ indicesData[startIdx + 3] ]
-        self:TriangleRasterization(p1,p2,p3)
+        local p1 = vertexShaderOutputList[ indicesData[startIdx + 1] ]
+        local p2 = vertexShaderOutputList[ indicesData[startIdx + 2] ]
+        local p3 = vertexShaderOutputList[ indicesData[startIdx + 3] ]
+        if p1 and p2 and p3 then
+            self:TriangleRasterization(p1,p2,p3)
+        end
     end
 end
 
 ---@private
-function Renderer:TriangleRasterization(p1,p2,p3)
-    local minX,maxX,minY,maxY = self:CalcuTriangleBound(p1,p2,p3)
+---@param vertex1 VertexShaderOutput
+---@param vertex2 VertexShaderOutput
+---@param vertex3 VertexShaderOutput
+function Renderer:TriangleRasterization(vertex1,vertex2,vertex3)
+    local frag1 = self:GenFragmentInput(vertex1)
+    local frag2 = self:GenFragmentInput(vertex2)
+    local frag3 = self:GenFragmentInput(vertex3)
+    local p1 = frag1.screenPos
+    local p2 = frag2.screenPos
+    local p3 = frag3.screenPos
     local f23 = function(x,y) return self:CalcuBarycentricCoord(p2,p3,x,y) end
     local f31 = function(x,y) return self:CalcuBarycentricCoord(p3,p1,x,y) end
     local f12 = function(x,y) return self:CalcuBarycentricCoord(p1,p2,x,y) end
     local alpha = f23(p1.x,p1.y)
     local beta  = f31(p2.x,p2.y)
     local gamma = f12(p3.x,p3.y)
+    local minX,maxX,minY,maxY = self:CalcuTriangleBound(p1,p2,p3)
     for y = minY,maxY do
         for x = minX,maxX do
+            --求像素在三角形中的重心坐标
             local a = f23(x,y) / alpha
             local b = f31(x,y) / beta
             local c = f12(x,y) / gamma
             if a >= 0 and b >= 0 and c >= 0 then
-                self:WritePixel(x,y,0.5,0.5,1)
+                --使用重心坐标对齐次空间坐标进行插值，z分量作为片元的深度值
+                local fragmentDepth = frag1.canonicalPos.z * a + frag2.canonicalPos.z * b + frag3.canonicalPos.z * c
+                local depthBuffer = self.depthBuffer[x][y]
+                --先进行深度测试（深度值越大表示越接近视点）
+                if depthBuffer == 0 or fragmentDepth > depthBuffer then
+                    --写入深度值
+                    if self.enabledDepthWrite then
+                        self.depthBuffer[x][y] = fragmentDepth
+                    end
+                    --使用重心坐标进行片元差值
+                    local fragment = self:FragmentInterpolation(a,b,c,frag1,frag2,frag3)
+                    --执行片元着色器
+                    local dstColor = self.shader:FragmentShader(fragment)
+                    --执行Alpha融合
+                    local alphaFactor = self.enabledAlphaBlend and dstColor.w or 1
+                    local srcColor = self.pixelBuffer[x][y]
+                    local finalR = srcColor[1] * (1 - alphaFactor) + dstColor.x * alphaFactor
+                    local finalG = srcColor[2] * (1 - alphaFactor) + dstColor.y * alphaFactor
+                    local finalB = srcColor[3] * (1 - alphaFactor) + dstColor.z * alphaFactor
+                    --把最终颜色写入像素缓存
+                    self:WritePixel(x,y,finalR,finalG,finalB)
+                end
+                --
             end
         end
     end
 end
 
+
 ---@private
-function Renderer:CalcuTriangleBound(...)
+---@param input vertexShaderOutput
+---@return FragmentShaderInput
+function Renderer:GenFragmentInput(input)
+    ---@type FragmentShaderInput
+    local fragmentShaderInput = {}
+    local ve3One = vec3.one()
+    --
+    for k,v in pairs(input) do
+        --通过做一次乘法达到克隆的目的
+        fragmentShaderInput[k] = v * ve3One
+    end
+    --裁剪空间坐标专为齐次坐标
+    local canonicalPos = input.clipPos:toVector3()
+    --变换到屏幕坐标
+    local screenX,screenY = mat4x4.mulXYZW(self.screenMatrix,canonicalPos.x,canonicalPos.y,0,1)
+    fragmentShaderInput.canonicalPos = canonicalPos
+    fragmentShaderInput.screenPos = vec2.new(luaMath.floor(screenX) + 0.5,luaMath.floor(screenY) + 0.5)
+    return fragmentShaderInput
+end
+
+---@private 计算2d空间三角形轴对称包围盒
+function Renderer:CalcuTriangleBound(p1,p2,p3)
     local minX = 0
     local maxX = 0
     local minY = 0
     local maxY = 0
-    for idx,point in pairs({...}) do
-        if point.x < minX then
-            minX = point.x
-        end
-        if point.x > maxX then
-            maxX = point.x
-        end
-        if point.y < minY then
-            minY = point.y
-        end
-        if point.y > maxY then
-            maxY = point.y
-        end
-    end
+    local Math = luaMath
+    --
+    minX = Math.min(minX,p1.x)
+    maxX = Math.max(maxX,p1.x)
+    minY = Math.min(minY,p1.y)
+    maxY = Math.max(maxY,p1.y)
+    --
+    minX = Math.min(minX,p2.x)
+    maxX = Math.max(maxX,p2.x)
+    minY = Math.min(minY,p2.y)
+    maxY = Math.max(maxY,p2.y)
+    --
+    minX = Math.min(minX,p3.x)
+    maxX = Math.max(maxX,p3.x)
+    minY = Math.min(minY,p3.y)
+    maxY = Math.max(maxY,p3.y)
     return luaMath.floor(minX),luaMath.ceil(maxX),luaMath.floor(minY),luaMath.ceil(maxY)
 end
 
 ---@private
 function Renderer:CalcuBarycentricCoord(triP1,triP2,pixelX,pixelY)
     local ret = (triP1.y - triP2.y) * pixelX + (triP2.x - triP1.x) * pixelY + triP1.x * triP2.y - triP1.y * triP2.x
+    return ret
+end
+
+---@private
+---@return FragmentShaderInput
+function Renderer:FragmentInterpolation(x,y,z,frag1,frag2,frag3)
+    local ret = {}
+    for k in pairs(frag1) do
+        ret[k] = frag1[k] * x + frag2[k] * y + frag3[k] * z
+    end
     return ret
 end
 

@@ -4,6 +4,13 @@
 --- DateTime: 2021/11/16 17:02
 ---顶点对象
 
+VertexLayoutIndex = {
+    worldPos = 1,
+    uv = 2,
+    color = 3,
+    normal = 4,
+}
+
 ---@class VertexLayout
 ---@field offset number
 ---@field stride number
@@ -80,7 +87,7 @@ end
 function VertexObject:GetVertexData(layoutIndex,vertexIndex)
     local layout = self.layout[layoutIndex]
     if not layout then
-        return {}
+        return nil
     end
     local stride = math.max(vertexIndex - 1,0) * layout.stride
     local startIndex = stride + layout.offset + 1

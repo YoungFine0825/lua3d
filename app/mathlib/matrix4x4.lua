@@ -107,7 +107,7 @@ end
 ---@param vector vector4 不一定是四维的，三维也可以
 ---@return vector4
 function matrix4x4.mulVector(matrix,vector)
-    local x,y,z,w = matrix4x4.mulXYZW(matrix,vector.x,vector.y,vector.z or 0,vector.w or 0)
+    local x,y,z,w = matrix4x4.mulXYZW(matrix,vector.x,vector.y,vector.z or 0,vector.w or 1)
     return vector4.new(x,y,z,w)
 end
 

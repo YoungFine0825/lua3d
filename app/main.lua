@@ -9,15 +9,18 @@ require("classlib")
 require("mathlib")
 require("render")
 
+require("shadertest")
+
 local loveGraphics = love.graphics
 local loveTimer = love.timer
 local deltaTime = 0
-local fpsStrT = {'Fps: ',0}
 local bgColor = Color.raywhite
 local winWid = SCREEN_WIDTH
 local winHei = SCREEN_HEIGHT
 ---@type Renderer
 local renderer = classLib.Renderer.new()
+---@type ShaderTest
+local shader = classLib.ShaderTest.new()
 
 local near = 1
 local far = 10
@@ -58,10 +61,21 @@ function love.load()
         3,2,6,3,6,7,--底部两个三角形
     })
     cubeVertexObj:SetTrianglesNumber(12)
-    cubeVertexObj:SetLayout(1,0,3,3)
+    cubeVertexObj:SetLayout(VertexLayoutIndex.worldPos,0,3,3)
     renderer:BindVertexObject(cubeVertexObj)
     renderer:SetProjectionMatrix(projectionMat)
     --
+    renderer:BindShader(shader)
+    shader:SetVector3('color',vector3.new(1,0,0))
+    --
+    local file,errMsg,errCode = io.open('cube.ply','r')
+    if not file then
+        print(errMsg)
+        print(errCode)
+    else
+        print(file:read())
+        file:close()
+    end
 end
 
 function love.update(dt)
@@ -70,24 +84,25 @@ function love.update(dt)
     cubeTrans[3][4] = -3 + math.abs( math.cos(deltaTime) )
     ------
     cubeYaw = cubeYaw + 20 * dt
-    local angleInRad = math.rad(cubeYaw )
+    local angleInRad = math.rad(cubeYaw)
     cubeRotate[1][1] = math.cos(angleInRad)
     cubeRotate[3][1] = math.sin(angleInRad)
     cubeRotate[1][3] = math.sin(angleInRad) * -1
     cubeRotate[3][3] = math.cos(angleInRad)
     --
-    renderer:SetModelViewMatrix(cubeTrans * cubeRotate)
+    renderer:SetViewMatrix(cubeTrans * cubeRotate)
     --
 end
 
 function love.draw()
     renderer:ClearPixelBuffer(bgColor)
+    --
     renderer:Draw()
+    --
     renderer:OutputPixelBuffer(winWid,winHei)
     --
     loveGraphics.setColor(1,0,0,1)
-    fpsStrT[2] = loveTimer.getFPS()
-    loveGraphics.print(table.concat(fpsStrT,''))
+    loveGraphics.print(loveTimer.getFPS())
 end
 
 do start() end
