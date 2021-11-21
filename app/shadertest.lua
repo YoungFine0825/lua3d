@@ -8,32 +8,57 @@ local vertexLayoutIdx = VertexLayoutIndex
 ---@class ShaderTest : Shader
 local ShaderTest = declareClass("ShaderTest",classLib.Shader)
 
+function ShaderTest:ctor()
+
+end
+
 ---@public
 ---@param renderer Renderer
 function ShaderTest:SetRenderState(renderer)
-    renderer:EnableAlphaBlend(true)
+    renderer:EnableAlphaBlend(false)
 end
 
 ---@private
 ---@return VertexShaderOutput
 function ShaderTest:VertexShader()
     local worldPos = self:GetVertexDataVec3(vertexLayoutIdx.worldPos)
-    local clipPos = self.mvpMatrix * worldPos
+    local clipPos = self.mvpMatrix * worldPos--将顶点从世界空间换到裁剪空间
+    --
+    local normal = self:GetVertexDataVec3(VertexLayoutIndex.normal)
+    local normalRotate = self:GetMatrix4x4("normalRotateMat")
+    normal = normalRotate * normal--旋转法线
+    --
+    local uv = self:GetVertexDataVec2(vertexLayoutIdx.uv)
     --
     ---@type VertexShaderOutput
     local o = {
         clipPos = clipPos,
         worldPos = worldPos,
+        normal = vector3.new(normal.x,normal.y,normal.z),
+        uv = uv
     }
     return o
 end
 
 ---@private
 ---@param input FragmentShaderInput
----@return vector4
+---@return number,number,number,number r,g,b,a
 function ShaderTest:FragmentShader(input)
-    local color = self:GetVector3('color')
-    return vector4.new(color.x,color.y,color.z,0.5)
+    local uv = input.uv
+    local uvDir = self:GetNumber("texCoordYDir")
+    uv.y = math.abs(uvDir - uv.y)
+    local tex = self:SampleTex2d('diffuseTex',uv)
+    --
+    local lightDir = self:GetVector3('lightDir') * -1
+    local lightColor = self:GetColor('lightColor')
+    local lightIntensity = self:GetNumber('lightIntensity')
+    --
+    local diffuse = vector3.dot(vector3.normalize(input.normal),vector3.normalize(lightDir))
+    diffuse = diffuse * 0.5 + 0.5
+    local diffuseColor = diffuse * lightColor * lightIntensity
+    ---@type Color
+    local finalColor = tex * diffuseColor
+    return finalColor.r,finalColor.g,finalColor.b,1
 end
 
 return ShaderTest

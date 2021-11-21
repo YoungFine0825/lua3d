@@ -15,7 +15,7 @@ typeof = function(obj)
     end
 end
 
-require('mathlib/vector2')
-require('mathlib/vector3')
-require('mathlib/vector4')
-require('mathlib/matrix4x4')
+require('app/mathlib/vector2')
+require('app/mathlib/vector3')
+require('app/mathlib/vector4')
+require('app/mathlib/matrix4x4')

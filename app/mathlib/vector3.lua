@@ -121,6 +121,15 @@ function vector3.magnitude(vector)
     return luaMath.sqrt(sqMagnitude)
 end
 
+---@public 球面线性差值
+function vector3.slerp(vec1,vec2,t)
+    local theta = luaMath.acos(vector3.dot( vector3.normalize(vec1),vector3.normalize(vec2) ))
+    local sin = luaMath.sin
+    local a = sin( (1 - t) * theta) / sin(theta)
+    local b = sin(t * theta) / sin(theta)
+    return a * vec1 + b * vec2
+end
+
 ---@public
 ---@return vector2
 function vector3:toVector2()

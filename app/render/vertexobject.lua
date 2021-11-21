@@ -65,7 +65,7 @@ function VertexObject:SetTrianglesNumber(number)
 end
 
 ---@public
-function VertexObject:SetLayout(index,offset,stride,size)
+function VertexObject:SetLayout(index,stride,offset,size)
     local layout = self.layout[index]
     if not layout then
         layout = {

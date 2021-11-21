@@ -13,6 +13,8 @@ local vec3 = vector3
 local vec4 = vector4
 local mat4x4 = matrix4x4
 
+local loveGraphics = love.graphics
+
 ---@class Renderer
 local Renderer = declareClass("Renderer")
 
@@ -129,7 +131,7 @@ end
 
 ---@public
 function Renderer:OutputPixelBuffer(viewWidth,viewHeight)
-    local loveGraphics = love.graphics
+
     local pW = luaMath.ceil(viewWidth / self.pixelBufferWidth)
     local pH = luaMath.ceil(viewHeight / self.pixelBufferHeight)
     --
@@ -207,7 +209,7 @@ function Renderer:Draw()
         local crossZ = p12.x * p13.y - p12.y * p13.x
         --通过点乘取三角形法线与三角形第一个点到原点的方向向量的夹角
         local dot = crossX * (0 - p1.x) + crossY * (0 - p1.y) + crossZ * (0 - p1.z)
-        if dot < 0 then--夹角大于90度，表示该三角形面向视点，需要渲染出来
+        if dot > 0 then--夹角小于于90度，表示该三角形面向视点，需要渲染出来
             visableTriangles[#visableTriangles + 1] = triIdx
             visableVertices[vertexIdx1] = 1
             visableVertices[vertexIdx2] = 1
@@ -223,74 +225,109 @@ function Renderer:Draw()
             vertexShaderOutputList[vertexIdx] = vertexShaderOutput
         end
     end
-    --光栅化三角形
-    for i = 1,#visableTriangles do
+    --剔除位于剪裁空间外的三角形
+    for i = #visableTriangles,1,-1 do
         local startIdx = visableTriangles[i] * 3
         local p1 = vertexShaderOutputList[ indicesData[startIdx + 1] ]
         local p2 = vertexShaderOutputList[ indicesData[startIdx + 2] ]
         local p3 = vertexShaderOutputList[ indicesData[startIdx + 3] ]
-        if p1 and p2 and p3 then
-            self:TriangleRasterization(p1,p2,p3)
+        if self:IsClipTri(p1.clipPos,p2.clipPos,p3.clipPos) then
+            luaTable.remove(visableTriangles,i)
         end
     end
-end
-
----@private
----@param vertex1 VertexShaderOutput
----@param vertex2 VertexShaderOutput
----@param vertex3 VertexShaderOutput
-function Renderer:TriangleRasterization(vertex1,vertex2,vertex3)
-    local frag1 = self:GenFragmentInput(vertex1)
-    local frag2 = self:GenFragmentInput(vertex2)
-    local frag3 = self:GenFragmentInput(vertex3)
-    local p1 = frag1.screenPos
-    local p2 = frag2.screenPos
-    local p3 = frag3.screenPos
-    local f23 = function(x,y) return self:CalcuBarycentricCoord(p2,p3,x,y) end
-    local f31 = function(x,y) return self:CalcuBarycentricCoord(p3,p1,x,y) end
-    local f12 = function(x,y) return self:CalcuBarycentricCoord(p1,p2,x,y) end
-    local alpha = f23(p1.x,p1.y)
-    local beta  = f31(p2.x,p2.y)
-    local gamma = f12(p3.x,p3.y)
-    local minX,maxX,minY,maxY = self:CalcuTriangleBound(p1,p2,p3)
-    for y = minY,maxY do
-        for x = minX,maxX do
-            --求像素在三角形中的重心坐标
-            local a = f23(x,y) / alpha
-            local b = f31(x,y) / beta
-            local c = f12(x,y) / gamma
-            if a >= 0 and b >= 0 and c >= 0 then
-                --使用重心坐标对齐次空间坐标进行插值，z分量作为片元的深度值
-                local fragmentDepth = frag1.canonicalPos.z * a + frag2.canonicalPos.z * b + frag3.canonicalPos.z * c
-                local depthBuffer = self.depthBuffer[x][y]
-                --先进行深度测试（深度值越大表示越接近视点）
-                if depthBuffer == 0 or fragmentDepth > depthBuffer then
-                    --写入深度值
-                    if self.enabledDepthWrite then
-                        self.depthBuffer[x][y] = fragmentDepth
+    --光栅化三角形
+    local fragmentsCache = {}
+    for i = 1,#visableTriangles do
+        local startIdx = visableTriangles[i] * 3
+        local vertexIdx1 = indicesData[startIdx + 1]
+        local vertexIdx2 = indicesData[startIdx + 2]
+        local vertexIdx3 = indicesData[startIdx + 3]
+        local vertexShaderOutput1 = vertexShaderOutputList[ vertexIdx1 ]
+        local vertexShaderOutput2 = vertexShaderOutputList[ vertexIdx2 ]
+        local vertexShaderOutput3 = vertexShaderOutputList[ vertexIdx3 ]
+        if vertexShaderOutput1 and vertexShaderOutput2 and vertexShaderOutput3 then
+            local frag1 = fragmentsCache[vertexIdx1]
+            if not frag1 then
+                frag1 = self:GenFragmentInput(vertexShaderOutput1)
+                fragmentsCache[vertexIdx1] = frag1
+            end
+            local frag2 = fragmentsCache[vertexIdx2]
+            if not frag2 then
+                frag2 = self:GenFragmentInput(vertexShaderOutput2)
+                fragmentsCache[vertexIdx2] = frag2
+            end
+            local frag3 = fragmentsCache[vertexIdx3]
+            if not frag3 then
+                frag3 = self:GenFragmentInput(vertexShaderOutput3)
+                fragmentsCache[vertexIdx3] = frag3
+            end
+            local p1 = frag1.screenPos
+            local p2 = frag2.screenPos
+            local p3 = frag3.screenPos
+            local f23 = function(x,y) return self:CalcuBarycentricCoord(p2,p3,x,y) end
+            local f31 = function(x,y) return self:CalcuBarycentricCoord(p3,p1,x,y) end
+            local f12 = function(x,y) return self:CalcuBarycentricCoord(p1,p2,x,y) end
+            local alpha = f23(p1.x,p1.y)
+            local beta  = f31(p2.x,p2.y)
+            local gamma = f12(p3.x,p3.y)
+            local minX,maxX,minY,maxY = self:CalcuTriangleBound(p1,p2,p3)
+            for y = minY,maxY do
+                for x = minX,maxX do
+                    --求像素在三角形中的重心坐标
+                    local a = f23(x,y) / alpha
+                    local b = f31(x,y) / beta
+                    local c = f12(x,y) / gamma
+                    if a >= 0 and b >= 0 and c >= 0 then
+                        --使用重心坐标对齐次空间坐标进行插值，z分量作为片元的深度值
+                        local fragmentDepth = frag1.rhw * a + frag2.rhw * b + frag3.rhw * c
+                        local depthBuffer = self.depthBuffer[x][y]
+                        --先进行深度测试（深度值越大表示越接近视点）
+                        if depthBuffer == 0 or fragmentDepth > depthBuffer then
+                            --写入深度值
+                            if self.enabledDepthWrite then
+                                self.depthBuffer[x][y] = fragmentDepth
+                            end
+                            --使用重心坐标进行片元差值
+                            local fragment = self:FragmentInterpolation(a,b,c,frag1,frag2,frag3)
+                            --执行片元着色器
+                            local dstColorR,dstColorG,dstColorB,dstColorA = self.shader:FragmentShader(fragment)
+                            --执行Alpha融合
+                            local alphaFactor = self.enabledAlphaBlend and dstColorA or 1
+                            local srcColor = self.pixelBuffer[x][y]
+                            local finalR = srcColor[1] * (1 - alphaFactor) + dstColorR * alphaFactor
+                            local finalG = srcColor[2] * (1 - alphaFactor) + dstColorG * alphaFactor
+                            local finalB = srcColor[3] * (1 - alphaFactor) + dstColorB * alphaFactor
+                            --把最终颜色写入像素缓存
+                            self:WritePixel(x,y,finalR,finalG,finalB)
+                        end
+                        --
                     end
-                    --使用重心坐标进行片元差值
-                    local fragment = self:FragmentInterpolation(a,b,c,frag1,frag2,frag3)
-                    --执行片元着色器
-                    local dstColor = self.shader:FragmentShader(fragment)
-                    --执行Alpha融合
-                    local alphaFactor = self.enabledAlphaBlend and dstColor.w or 1
-                    local srcColor = self.pixelBuffer[x][y]
-                    local finalR = srcColor[1] * (1 - alphaFactor) + dstColor.x * alphaFactor
-                    local finalG = srcColor[2] * (1 - alphaFactor) + dstColor.y * alphaFactor
-                    local finalB = srcColor[3] * (1 - alphaFactor) + dstColor.z * alphaFactor
-                    --把最终颜色写入像素缓存
-                    self:WritePixel(x,y,finalR,finalG,finalB)
                 end
-                --
             end
         end
     end
 end
 
+---@private 三角裁剪  根据据三 角形三个顶点是否都在裁剪空 间之外，决定三角形是否应该被裁减掉
+---@param p1 vector4
+---@param p2 vector4
+---@param p3 vector4
+function Renderer:IsClipTri(p1,p2,p3)
+    local w = p1.w
+    local negW = w * -1
+    local isP1Visable = (p1.x <= w and p1.x >= negW) and (p1.y <= w and p1.y >= negW)and (p1.z <= w and p1.z >= negW)
+    w = p2.w
+    negW = w * -1
+    local isP2Visable = (p2.x <= w and p2.x >= negW) and (p2.y <= w and p2.y >= negW)and (p2.z <= w and p2.z >= negW)
+    w = p3.w
+    negW = w * -1
+    local isP3Visable = (p3.x <= w and p3.x >= negW) and (p3.y <= w and p3.y >= negW)and (p3.z <= w and p3.z >= negW)
+    return not isP1Visable and not isP2Visable and not isP3Visable
+end
+
 
 ---@private
----@param input vertexShaderOutput
+---@param input VertexShaderOutput
 ---@return FragmentShaderInput
 function Renderer:GenFragmentInput(input)
     ---@type FragmentShaderInput
@@ -301,12 +338,16 @@ function Renderer:GenFragmentInput(input)
         --通过做一次乘法达到克隆的目的
         fragmentShaderInput[k] = v * ve3One
     end
-    --裁剪空间坐标专为齐次坐标
-    local canonicalPos = input.clipPos:toVector3()
+    local clipPos = input.clipPos
+    --计算 w 的倒数：Reciprocal of the Homogeneous W
+    local w = input.clipPos.w
+    local rhw = 1 / (w ~= 0 and w or 1)
+    --裁剪空间坐标转为齐次空间坐标
+    local canonicalPos = vec3.new(clipPos.x * rhw,clipPos.y * rhw,clipPos.z * rhw)
     --变换到屏幕坐标
     local screenX,screenY = mat4x4.mulXYZW(self.screenMatrix,canonicalPos.x,canonicalPos.y,0,1)
-    fragmentShaderInput.canonicalPos = canonicalPos
     fragmentShaderInput.screenPos = vec2.new(luaMath.floor(screenX) + 0.5,luaMath.floor(screenY) + 0.5)
+    fragmentShaderInput.rhw = rhw
     return fragmentShaderInput
 end
 
@@ -332,7 +373,10 @@ function Renderer:CalcuTriangleBound(p1,p2,p3)
     maxX = Math.max(maxX,p3.x)
     minY = Math.min(minY,p3.y)
     maxY = Math.max(maxY,p3.y)
-    return luaMath.floor(minX),luaMath.ceil(maxX),luaMath.floor(minY),luaMath.ceil(maxY)
+    return luaMath.max(luaMath.floor(minX),0),
+    luaMath.min( luaMath.ceil(maxX), self.pixelBufferWidth - 1),
+    luaMath.max( luaMath.floor(minY), 0),
+    luaMath.min( luaMath.ceil(maxY),self.pixelBufferHeight - 1)
 end
 
 ---@private
@@ -346,6 +390,16 @@ end
 function Renderer:FragmentInterpolation(x,y,z,frag1,frag2,frag3)
     local ret = {}
     for k in pairs(frag1) do
+        --if k == 'normal' then
+        --    local rhw = frag1.rhw * x + frag2.rhw * y + frag3.rhw * z
+        --    local w = 1 / (rhw ~= 0 and rhw or 1)
+        --    local c1 = frag1.rhw * x * w
+        --    local c2 = frag2.rhw * y * w
+        --    local c3 = frag3.rhw * z * w
+        --    ret[k] = frag1[k] * c1 + frag2[k] * c2 + frag3[k] * c3
+        --else
+        --    ret[k] = frag1[k] * x + frag2[k] * y + frag3[k] * z
+        --end
         ret[k] = frag1[k] * x + frag2[k] * y + frag3[k] * z
     end
     return ret

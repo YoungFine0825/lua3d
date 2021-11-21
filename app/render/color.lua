@@ -27,7 +27,24 @@ local getLuaDataType = type
 local Color = {}
 local getter = {}
 
+---@public
 function Color.new(r,g,b,a)
+    local color = {
+        r = r,
+        g = g,
+        b = b,
+        a = a,
+    }
+    setmetatable(color,Color)
+    return color
+end
+
+---@public
+function Color.fromVector(vector)
+    local r = vector.x or 0
+    local g = vector.y or 0
+    local b = vector.z or 0
+    local a = vector.w or 1
     local color = {
         r = r,
         g = g,
