@@ -23,8 +23,8 @@ local getLuaDataType = type
 ---@field magenta Color
 ---@field gray Color
 ---@field raywhite Color from RayLib  https://github.com/raysan5/raylib
-
 local Color = {}
+
 local getter = {}
 
 ---@public

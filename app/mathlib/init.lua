@@ -15,6 +15,10 @@ typeof = function(obj)
     end
 end
 
+math.clamp = function(value,min,max)
+    return math.max(min,math.min(value,max))
+end
+
 require('app/mathlib/vector2')
 require('app/mathlib/vector3')
 require('app/mathlib/vector4')

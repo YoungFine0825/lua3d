@@ -132,16 +132,16 @@ end
 ---@public
 function Renderer:OutputPixelBuffer(viewWidth,viewHeight)
 
-    local pW = luaMath.ceil(viewWidth / self.pixelBufferWidth)
-    local pH = luaMath.ceil(viewHeight / self.pixelBufferHeight)
+    local pW = viewWidth / self.pixelBufferWidth
+    local pH = viewHeight / self.pixelBufferHeight
     --
-    loveGraphics.setPointSize(pW)
+    loveGraphics.setPointSize(pW + 0.5)
     for x = 0,self.pixelBufferWidth - 1 do
         for y = 0,self.pixelBufferHeight - 1 do
             local p = self.pixelBuffer[x][y]
             loveGraphics.setColor(p[1],p[2],p[3],1)
             --
-            loveGraphics.points(x * pW + pW / 2 ,y * pH + pH / 2)
+            loveGraphics.points(x * pW + pW / 2 ,y * pH + pH / 2  )
         end
     end
 end

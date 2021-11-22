@@ -52,31 +52,39 @@ function AppRoot:Init()
 end
 
 ---@public
+function AppRoot:Quit()
+
+end
+
+---@public
 function AppRoot:OnLoad()
     ---@type VertexObject
-    local plyModel = VertexObjectHelper.LoadFromPLY('res/tangdao.ply')
-    local texId,texData = self.textureMgr:LoadTexture('res/tangdao.png')
+    local plyModel = VertexObjectHelper.LoadFromPLY('res/chujiu.ply')
+    local texId,texData = self.textureMgr:LoadTexture('res/chujiu.png')
     --
     self.renderer:BindVertexObject(plyModel)
     local projectionMat = matrix4x4.perspective(math.rad(fov),aspect,near,far)
     self.renderer:SetProjectionMatrix(projectionMat)
     --
-    shader:SetVector3('lightDir',vector3.new(1,0,0))
-    shader:SetColor('lightColor',Color.white)
-    shader:SetNumber('lightIntensity',0.9)
-    shader:SetVector3('viewPoint',vector3.zero())
+    shader:SetVector3('lightDir',vector3.new(-1,-1,-1))
+    shader:SetColor('lightColor',Color.new(0.97,0.9,0.73,1))
+    shader:SetNumber('lightIntensity',0.7)
+    shader:SetVector3('viewPoint',vector3.new(0,0,0))
     --
-    shader:SetTexture2d('diffuseTex',texData)
-    shader:SetNumber('texCoordYDir',0)
+    shader:SetColor('specularColor',Color.white)
+    shader:SetNumber('gloss',10)
+    --
+    shader:SetTexture2d('albedo',texData)
     --
     self.renderer:BindShader(shader)
+    --
 end
 
 ---@public
 function AppRoot:OnUpdate(dt)
     self.deltaTime = self.deltaTime + dt
     --
-    cubeTrans[2][4] = -1.5
+    cubeTrans[2][4] = -1.3
     cubeTrans[3][4] = -1
     ------
     cubeYaw = cubeYaw + 10 * dt
@@ -89,15 +97,20 @@ function AppRoot:OnUpdate(dt)
     self.renderer:SetViewMatrix(cubeTrans * cubeRotate)
     --
     shader:SetMatrix4x4('normalRotateMat',cubeRotate)
+    --
 end
 
 ---@public
-function AppRoot:OnRendering()
+function AppRoot:RenderOneFrame()
     --
     self.renderer:ClearPixelBuffer(bgColor)
     --
     self.renderer:Draw()
     --
+end
+
+---@public
+function AppRoot:OuputFrame()
     self.renderer:OutputPixelBuffer(winWid,winHei)
 end
 

@@ -7,15 +7,17 @@
 require('app/approot')
 
 ---@type AppRoot
-AppRoot = classLib.AppRoot.new()
+local AppRoot = classLib.AppRoot.new()
 
 local loveGraphics = love.graphics
 local loveTimer = love.timer
-local spendTimeTips = {'Rendering Time: ',0}
-local resolutionTips = table.concat({'Resolution: ',PIXEL_WIDTH,' x ',PIXEL_HEIGHT},'')
+local renderingTimeTips = {'Rendering Time: ',0}
+local resolutionTips = table.concat({'分辨率: ',PIXEL_WIDTH,' x ',PIXEL_HEIGHT},'')
+
+local doRendering = true
 
 local function start()
-    love.window.setTitle("使用Lua基于Love2D引擎实现3d渲染管线")
+    love.window.setTitle("使用Lua基于Love2D引擎实现3D图形渲染 "..resolutionTips)
     love.window.setMode(SCREEN_WIDTH, SCREEN_HEIGHT, {resizable=false, vsync=false})
     love.filesystem.setSymlinksEnabled(true)
     AppRoot:Init()
@@ -25,20 +27,38 @@ function love.load()
     AppRoot:OnLoad()
 end
 
+function love.keyreleased(key)
+    if key == "escape" then
+        love.event.quit()
+    elseif key == 'space' then
+        doRendering = true
+    end
+end
+
 function love.update(dt)
     AppRoot:OnUpdate(dt)
 end
 
 function love.draw()
-    local time = loveTimer.getTime()
     --
-    AppRoot:OnRendering()
+    if doRendering then
+        local statTime = loveTimer.getTime()
+        --
+        AppRoot:RenderOneFrame()
+        --
+        renderingTimeTips[2] = loveTimer.getTime() - statTime
+        --
+        doRendering = false
+    end
     --
-    spendTimeTips[2] = loveTimer.getTime() - time
+    AppRoot:OuputFrame()
     --
     loveGraphics.setColor(1,0,0,1)
-    loveGraphics.print(table.concat(spendTimeTips,''),10,0)
-    loveGraphics.print(resolutionTips,10,20)
+    loveGraphics.print(table.concat(renderingTimeTips,''),10,0)
+end
+
+function love.quit()
+    AppRoot:Quit()
 end
 
 do start() end
