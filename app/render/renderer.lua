@@ -264,19 +264,19 @@ function Renderer:Draw()
             local p1 = frag1.screenPos
             local p2 = frag2.screenPos
             local p3 = frag3.screenPos
-            local f23 = function(x,y) return self:CalcuBarycentricCoord(p2,p3,x,y) end
-            local f31 = function(x,y) return self:CalcuBarycentricCoord(p3,p1,x,y) end
-            local f12 = function(x,y) return self:CalcuBarycentricCoord(p1,p2,x,y) end
-            local alpha = f23(p1.x,p1.y)
-            local beta  = f31(p2.x,p2.y)
-            local gamma = f12(p3.x,p3.y)
+            local calcuArea23 = function(x,y) return self:CalcuSignedTriangleArea(p2,p3,x,y) end
+            local calcuArea31 = function(x,y) return self:CalcuSignedTriangleArea(p3,p1,x,y) end
+            local calcuArea12 = function(x,y) return self:CalcuSignedTriangleArea(p1,p2,x,y) end
+            local triArea1 = calcuArea23(p1.x,p1.y)
+            local triArea2 = calcuArea31(p2.x,p2.y)
+            local triArea3 = calcuArea12(p3.x,p3.y)
             local minX,maxX,minY,maxY = self:CalcuTriangleBound(p1,p2,p3)
             for y = minY,maxY do
                 for x = minX,maxX do
                     --求像素在三角形中的重心坐标
-                    local a = f23(x,y) / alpha
-                    local b = f31(x,y) / beta
-                    local c = f12(x,y) / gamma
+                    local a = calcuArea23(x,y) / triArea1
+                    local b = calcuArea31(x,y) / triArea2
+                    local c = calcuArea12(x,y) / triArea3
                     if a >= 0 and b >= 0 and c >= 0 then
                         --使用重心坐标对齐次空间坐标进行插值，z分量作为片元的深度值
                         local fragmentDepth = frag1.rhw * a + frag2.rhw * b + frag3.rhw * c
@@ -380,7 +380,7 @@ function Renderer:CalcuTriangleBound(p1,p2,p3)
 end
 
 ---@private
-function Renderer:CalcuBarycentricCoord(triP1,triP2,pixelX,pixelY)
+function Renderer:CalcuSignedTriangleArea(triP1,triP2,pixelX,pixelY)
     local ret = (triP1.y - triP2.y) * pixelX + (triP2.x - triP1.x) * pixelY + triP1.x * triP2.y - triP1.y * triP2.x
     return ret
 end
