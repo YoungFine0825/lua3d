@@ -12,7 +12,9 @@ local AppRoot = classLib.AppRoot.new()
 local loveGraphics = love.graphics
 local loveTimer = love.timer
 local renderingTimeTips = {'Rendering Time: ',0}
-local resolutionTips = table.concat({'分辨率: ',PIXEL_WIDTH,' x ',PIXEL_HEIGHT},'')
+local triangleCountTips = {'Triangles : ',0}
+local pixelCountTips = {'Pixels : ',0}
+local resolutionTips = table.concat({'渲染分辨率: ',PIXEL_WIDTH,' x ',PIXEL_HEIGHT},'')
 
 local doRendering = true
 
@@ -49,12 +51,19 @@ function love.draw()
         renderingTimeTips[2] = loveTimer.getTime() - statTime
         --
         doRendering = false
+        --
+        triangleCountTips[2] = AppRoot.renderer.drawnTriangleCnt
+        pixelCountTips[2] = AppRoot.renderer.drawnPixelCnt
     end
     --
     AppRoot:OuputFrame()
     --
     loveGraphics.setColor(1,0,0,1)
-    loveGraphics.print(table.concat(renderingTimeTips,''),10,0)
+    local concat = table.concat
+    loveGraphics.print(concat(renderingTimeTips,''),10,0)
+    loveGraphics.print(concat(triangleCountTips,''),10,20)
+    loveGraphics.print(concat(pixelCountTips,''),10,40)
+    loveGraphics.print('Click \'Space\' to render next frame !',10,60)
 end
 
 function love.quit()

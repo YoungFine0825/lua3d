@@ -13,8 +13,6 @@ local vec3 = vector3
 local vec4 = vector4
 local mat4x4 = matrix4x4
 
-local loveGraphics = love.graphics
-
 ---@class Renderer
 local Renderer = declareClass("Renderer")
 
@@ -50,6 +48,12 @@ function Renderer:ctor()
 
     ---@type boolean
     self.enabledDepthWrite = true
+
+    ---@type number
+    self.drawnTriangleCnt = 0
+
+    ---@type number
+    self.drawnPixelCnt = 0
 end
 
 ---@public
@@ -129,23 +133,6 @@ function Renderer:WritePixel(x,y,r,g,b)
     end
 end
 
----@public
-function Renderer:OutputPixelBuffer(viewWidth,viewHeight)
-
-    local pW = viewWidth / self.pixelBufferWidth
-    local pH = viewHeight / self.pixelBufferHeight
-    --
-    loveGraphics.setPointSize(pW + 0.5)
-    for x = 0,self.pixelBufferWidth - 1 do
-        for y = 0,self.pixelBufferHeight - 1 do
-            local p = self.pixelBuffer[x][y]
-            loveGraphics.setColor(p[1],p[2],p[3],1)
-            --
-            loveGraphics.points(x * pW + pW / 2 ,y * pH + pH / 2  )
-        end
-    end
-end
-
 ---@private
 function Renderer:WriteDethBuffer(x,y,depth)
     self.depthBuffer[x][y] = depth
@@ -184,6 +171,7 @@ function Renderer:Draw()
     local visableVertices = {}
     local visableTriangles = {}
     local vertexShaderOutputList = {}
+    local fragmentsCache = {}
     --
     --将所有顶点转换到观察空间
     for vertexIdx = 1,verticeNum do
@@ -226,57 +214,51 @@ function Renderer:Draw()
         end
     end
     --剔除位于剪裁空间外的三角形
+    local drawableTriangles = {}
+    local drawableTriangleCnt = 0
     for i = #visableTriangles,1,-1 do
         local startIdx = visableTriangles[i] * 3
-        local p1 = vertexShaderOutputList[ indicesData[startIdx + 1] ]
-        local p2 = vertexShaderOutputList[ indicesData[startIdx + 2] ]
-        local p3 = vertexShaderOutputList[ indicesData[startIdx + 3] ]
-        if self:IsClipTri(p1.clipPos,p2.clipPos,p3.clipPos) then
-            luaTable.remove(visableTriangles,i)
+        local vertex1 = indicesData[startIdx + 1]
+        local vertex2 = indicesData[startIdx + 2]
+        local vertex3 = indicesData[startIdx + 3]
+        local p1 = vertexShaderOutputList[ vertex1 ]
+        local p2 = vertexShaderOutputList[ vertex2 ]
+        local p3 = vertexShaderOutputList[ vertex3 ]
+        if not self:IsClipTri(p1.clipPos,p2.clipPos,p3.clipPos) then
+            drawableTriangleCnt = drawableTriangleCnt + 1
+            drawableTriangles[drawableTriangleCnt] = visableTriangles[i]
+            if not fragmentsCache[vertex1] then fragmentsCache[vertex1] = self:GenFragmentInput(p1) end
+            if not fragmentsCache[vertex2] then fragmentsCache[vertex2] = self:GenFragmentInput(p2) end
+            if not fragmentsCache[vertex3] then fragmentsCache[vertex3] = self:GenFragmentInput(p3) end
         end
     end
     --光栅化三角形
-    local fragmentsCache = {}
-    for i = 1,#visableTriangles do
-        local startIdx = visableTriangles[i] * 3
+    local CalcuSignedTriangleArea = function(triP1,triP2,pixelX,pixelY)
+        return (triP1.y - triP2.y) * pixelX + (triP2.x - triP1.x) * pixelY + triP1.x * triP2.y - triP1.y * triP2.x
+    end
+    local pixelCnt = 0
+    for i = 1,drawableTriangleCnt do
+        local startIdx = drawableTriangles[i] * 3
         local vertexIdx1 = indicesData[startIdx + 1]
         local vertexIdx2 = indicesData[startIdx + 2]
         local vertexIdx3 = indicesData[startIdx + 3]
-        local vertexShaderOutput1 = vertexShaderOutputList[ vertexIdx1 ]
-        local vertexShaderOutput2 = vertexShaderOutputList[ vertexIdx2 ]
-        local vertexShaderOutput3 = vertexShaderOutputList[ vertexIdx3 ]
-        if vertexShaderOutput1 and vertexShaderOutput2 and vertexShaderOutput3 then
-            local frag1 = fragmentsCache[vertexIdx1]
-            if not frag1 then
-                frag1 = self:GenFragmentInput(vertexShaderOutput1)
-                fragmentsCache[vertexIdx1] = frag1
-            end
-            local frag2 = fragmentsCache[vertexIdx2]
-            if not frag2 then
-                frag2 = self:GenFragmentInput(vertexShaderOutput2)
-                fragmentsCache[vertexIdx2] = frag2
-            end
-            local frag3 = fragmentsCache[vertexIdx3]
-            if not frag3 then
-                frag3 = self:GenFragmentInput(vertexShaderOutput3)
-                fragmentsCache[vertexIdx3] = frag3
-            end
+        local frag1 = fragmentsCache[vertexIdx1]
+        local frag2 = fragmentsCache[vertexIdx2]
+        local frag3 = fragmentsCache[vertexIdx3]
+        if frag1 and frag2 and frag3 then
             local p1 = frag1.screenPos
             local p2 = frag2.screenPos
             local p3 = frag3.screenPos
-            local calcuArea23 = function(x,y) return self:CalcuSignedTriangleArea(p2,p3,x,y) end
-            local calcuArea31 = function(x,y) return self:CalcuSignedTriangleArea(p3,p1,x,y) end
-            local calcuArea12 = function(x,y) return self:CalcuSignedTriangleArea(p1,p2,x,y) end
-            local triArea1 = calcuArea23(p1.x,p1.y)
-            local triArea2 = calcuArea31(p2.x,p2.y)
-            local triArea3 = calcuArea12(p3.x,p3.y)
+            local triArea1 = CalcuSignedTriangleArea(p2,p3, p1.x,p1.y)
+            local triArea2 = CalcuSignedTriangleArea(p3,p1, p2.x,p2.y)
+            local triArea3 = CalcuSignedTriangleArea(p1,p2, p3.x,p3.y)
             local minX,maxX,minY,maxY = self:CalcuTriangleBound(p1,p2,p3)
             for y = minY,maxY do
                 for x = minX,maxX do
                     --求像素在三角形中的重心坐标
-                    local a = calcuArea23(x,y) / triArea1
-                    local b = calcuArea31(x,y) / triArea2
-                    local c = calcuArea12(x,y) / triArea3
+                    local a = CalcuSignedTriangleArea(p2,p3,x,y) / triArea1
+                    local b = CalcuSignedTriangleArea(p3,p1,x,y) / triArea2
+                    local c = CalcuSignedTriangleArea(p1,p2,x,y) / triArea3
                     if a >= 0 and b >= 0 and c >= 0 then
                         --使用重心坐标对齐次空间坐标进行插值，z分量作为片元的深度值
                         local fragmentDepth = frag1.rhw * a + frag2.rhw * b + frag3.rhw * c
@@ -299,6 +281,8 @@ function Renderer:Draw()
                             local finalB = srcColor[3] * (1 - alphaFactor) + dstColorB * alphaFactor
                             --把最终颜色写入像素缓存
                             self:WritePixel(x,y,finalR,finalG,finalB)
+                            --
+                            pixelCnt = pixelCnt + 1
                         end
                         --
                     end
@@ -306,6 +290,8 @@ function Renderer:Draw()
             end
         end
     end
+    self.drawnPixelCnt = pixelCnt
+    self.drawnTriangleCnt = drawableTriangleCnt
 end
 
 ---@private 三角裁剪  根据据三 角形三个顶点是否都在裁剪空 间之外，决定三角形是否应该被裁减掉
@@ -332,11 +318,11 @@ end
 function Renderer:GenFragmentInput(input)
     ---@type FragmentShaderInput
     local fragmentShaderInput = {}
-    local ve3One = vec3.one()
+    --local ve3One = vec3.one()
     --
     for k,v in pairs(input) do
         --通过做一次乘法达到克隆的目的
-        fragmentShaderInput[k] = v * ve3One
+        fragmentShaderInput[k] = v --* ve3One
     end
     local clipPos = input.clipPos
     --计算 w 的倒数：Reciprocal of the Homogeneous W
@@ -390,16 +376,6 @@ end
 function Renderer:FragmentInterpolation(x,y,z,frag1,frag2,frag3)
     local ret = {}
     for k in pairs(frag1) do
-        --if k == 'normal' then
-        --    local rhw = frag1.rhw * x + frag2.rhw * y + frag3.rhw * z
-        --    local w = 1 / (rhw ~= 0 and rhw or 1)
-        --    local c1 = frag1.rhw * x * w
-        --    local c2 = frag2.rhw * y * w
-        --    local c3 = frag3.rhw * z * w
-        --    ret[k] = frag1[k] * c1 + frag2[k] * c2 + frag3[k] * c3
-        --else
-        --    ret[k] = frag1[k] * x + frag2[k] * y + frag3[k] * z
-        --end
         ret[k] = frag1[k] * x + frag2[k] * y + frag3[k] * z
     end
     return ret
