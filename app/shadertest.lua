@@ -57,8 +57,10 @@ function ShaderTest:FragmentShader(input)
     local lightIntensity = self:GetNumber('lightIntensity')
     --
     local normal = vector3.normalize(input.normal)
-    --计算漫反射
+    --计算漫反射辐照度 (兰伯特漫反射定理: 该点的法线与光照方向的点乘即为该点的漫反射辐照度)
     local diffuse = vector3.dot(normal,inverseLightDir)
+    --点乘的结果的范围为-1 ~ 1，如果直接用，那么渲染结果就是模型没有被光直接照射的部分(点乘值小于等于0的像素)完全黑。
+    --所以这里将值映射到0~1的范围，即半兰伯特漫反射。这样没有被光照直接照射的部分就不会完全黑，而是相对较暗，相当于被环境光照射。
     diffuse = diffuse * 0.5 + 0.5
     local diffuseColor = diffuse * lightColor * lightIntensity
     --计算高光

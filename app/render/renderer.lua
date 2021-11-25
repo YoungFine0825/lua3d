@@ -165,16 +165,13 @@ function Renderer:Draw()
         self.shader:SetRenderState(self)
     end
     --
-    local verticeNum = self.vertexObject.verticesNumber
     local indicesData = self.vertexObject.indicesData
     local viewSpaceVertices = {}
     local visableVertices = {}
     local visableTriangles = {}
-    local vertexShaderOutputList = {}
-    local fragmentsCache = {}
     --
     --将所有顶点转换到观察空间
-    for vertexIdx = 1,verticeNum do
+    for vertexIdx = 1,self.vertexObject.verticesNumber do
         local point = self.vertexObject:GetVertexData(1,vertexIdx)
         local vertex = vec4.new(point[1],point[2],point[3],1)
         viewSpaceVertices[vertexIdx] = self.viewMatrix * vertex
@@ -205,17 +202,16 @@ function Renderer:Draw()
         end
     end
     --执行顶点着色器，着色器应当返回顶点的裁剪空间坐标
+    local vertexShaderOutputList = {}
     for vertexIdx in pairs(visableVertices) do
         self.shader:SetCurVertexIndex(vertexIdx)
-        ---@type VertexShaderOutput
-        local vertexShaderOutput = self.shader:VertexShader()
-        if vertexShaderOutput.clipPos then
-            vertexShaderOutputList[vertexIdx] = vertexShaderOutput
-        end
+        ---@type VertexShaderOutput 顶点着色器返回的结构中必须包含clipPos字段
+        vertexShaderOutputList[vertexIdx] = self.shader:VertexShader()
     end
-    --剔除位于剪裁空间外的三角形
+    --剔除完全位于剪裁空间外的三角形
     local drawableTriangles = {}
     local drawableTriangleCnt = 0
+    local fragmentsCache = {}
     for i = #visableTriangles,1,-1 do
         local startIdx = visableTriangles[i] * 3
         local vertex1 = indicesData[startIdx + 1]
@@ -232,11 +228,12 @@ function Renderer:Draw()
             if not fragmentsCache[vertex3] then fragmentsCache[vertex3] = self:GenFragmentInput(p3) end
         end
     end
-    --光栅化三角形
+    -----光栅化三角形-----
     local CalcuSignedTriangleArea = function(triP1,triP2,pixelX,pixelY)
         return (triP1.y - triP2.y) * pixelX + (triP2.x - triP1.x) * pixelY + triP1.x * triP2.y - triP1.y * triP2.x
     end
     local pixelCnt = 0
+    local fragment = {}
     for i = 1,drawableTriangleCnt do
         local startIdx = drawableTriangles[i] * 3
         local vertexIdx1 = indicesData[startIdx + 1]
@@ -260,7 +257,7 @@ function Renderer:Draw()
                     local b = CalcuSignedTriangleArea(p3,p1,x,y) / triArea2
                     local c = CalcuSignedTriangleArea(p1,p2,x,y) / triArea3
                     if a >= 0 and b >= 0 and c >= 0 then
-                        --使用重心坐标对齐次空间坐标进行插值，z分量作为片元的深度值
+                        --使用重心坐标对齐次坐标的w分量进行插值，得出的值作为该片元的深度值
                         local fragmentDepth = frag1.rhw * a + frag2.rhw * b + frag3.rhw * c
                         local depthBuffer = self.depthBuffer[x][y]
                         --先进行深度测试（深度值越大表示越接近视点）
@@ -270,7 +267,9 @@ function Renderer:Draw()
                                 self.depthBuffer[x][y] = fragmentDepth
                             end
                             --使用重心坐标进行片元差值
-                            local fragment = self:FragmentInterpolation(a,b,c,frag1,frag2,frag3)
+                            for k in pairs(frag1) do
+                                fragment[k] = frag1[k] * a + frag2[k] * b + frag3[k] * c
+                            end
                             --执行片元着色器
                             local dstColorR,dstColorG,dstColorB,dstColorA = self.shader:FragmentShader(fragment)
                             --执行Alpha融合
@@ -364,23 +363,6 @@ function Renderer:CalcuTriangleBound(p1,p2,p3)
     luaMath.max( luaMath.floor(minY), 0),
     luaMath.min( luaMath.ceil(maxY),self.pixelBufferHeight - 1)
 end
-
----@private
-function Renderer:CalcuSignedTriangleArea(triP1,triP2,pixelX,pixelY)
-    local ret = (triP1.y - triP2.y) * pixelX + (triP2.x - triP1.x) * pixelY + triP1.x * triP2.y - triP1.y * triP2.x
-    return ret
-end
-
----@private
----@return FragmentShaderInput
-function Renderer:FragmentInterpolation(x,y,z,frag1,frag2,frag3)
-    local ret = {}
-    for k in pairs(frag1) do
-        ret[k] = frag1[k] * x + frag2[k] * y + frag3[k] * z
-    end
-    return ret
-end
-
 
 ---@public
 function Renderer:DrawLine(x0,y0,x1,y1)
