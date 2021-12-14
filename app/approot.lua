@@ -60,9 +60,9 @@ end
 function AppRoot:OnLoad()
     --加载ply格式模型数据
     ---@type VertexObject
-    local plyModel = VertexObjectHelper.LoadFromPLY('res/chujiu.ply')
+    local plyModel = VertexObjectHelper.LoadFromPLY('res/tangdao.ply')
     --加载模型纹理
-    local texId,texData = self.textureMgr:LoadTexture('res/chujiu.png')
+    local texId,texData = self.textureMgr:LoadTexture('res/tangdao.png')
     --绑定顶点数据对象
     self.renderer:BindVertexObject(plyModel)
     --设置投影矩阵(这里用的是透视投影)
@@ -87,7 +87,7 @@ end
 function AppRoot:OnUpdate(dt)
     self.deltaTime = self.deltaTime + dt
     --
-    modelTrans[2][4] = -1.3--y轴位移
+    modelTrans[2][4] = -1.5--y轴位移
     modelTrans[3][4] = -1--z轴位移
     ---绕Y轴旋转矩阵
     modelYaw = modelYaw + 10 * dt
