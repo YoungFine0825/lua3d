@@ -235,8 +235,8 @@ function Shader:SampleTex2d(texName,uv)
     if texture2d then
         local w = texture2d.width - 1
         local h = texture2d.height - 1
-        local uvX = math.min(uv.x,1)
-        local uvY = 1 - math.min(uv.y,1)
+        local uvX = math.min(math.max(0,uv.x),1)
+        local uvY = 1 - math.min(math.max(0,uv.y),1)
         r,g,b,a = texture2d.data:getPixel(w * uvX,h * uvY)
     end
     return Color.new(r,g,b,a)
