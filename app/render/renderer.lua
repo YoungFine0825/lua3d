@@ -257,11 +257,8 @@ function Renderer:Draw()
                     local bcScreenY = CalcuSignedTriangleArea(p3,p1,x,y) / triArea2
                     local bcScreenZ = CalcuSignedTriangleArea(p1,p2,x,y) / triArea3
                     if bcScreenX >= 0 and bcScreenY >= 0 and bcScreenZ >= 0 then
-                        --将像素的重心坐标(屏幕空间)转换到裁剪空间中
-                        local bcClip = vec3.new(bcScreenX / frag1.wClip,bcScreenY / frag2.wClip,bcScreenZ / frag3.wClip)
-                        bcClip = bcClip / (bcClip.x + bcClip.y + bcClip.z)
-                        --使用裁剪空间重心坐标对三角形三个顶点（裁剪空间）的z坐标进行差值得出该像素的深度
-                        local fragmentDepth = bcClip.x * frag1.zClip + bcClip.y * frag2.zClip + bcClip.z * frag3.zClip
+                        --使用重心坐标对三角形三个（齐次空间下）顶点的z坐标进行差值得出该像素的深度
+                        local fragmentDepth = bcScreenX * frag1.zCanon + bcScreenY * frag2.zCanon + bcScreenZ * frag3.zCanon
                         local depthBuffer = self.depthBuffer[x][y]
                         --先进行深度测试（深度值越大表示越接近视点）
                         if depthBuffer == 0 or fragmentDepth > depthBuffer then
@@ -269,6 +266,9 @@ function Renderer:Draw()
                             if self.enabledDepthWrite then
                                 self.depthBuffer[x][y] = fragmentDepth
                             end
+                            --将像素的重心坐标(屏幕空间)转换到裁剪空间中
+                            local bcClip = vec3.new(bcScreenX / frag1.wClip,bcScreenY / frag2.wClip,bcScreenZ / frag3.wClip)
+                            bcClip = bcClip / (bcClip.x + bcClip.y + bcClip.z)
                             --使用裁剪空间重心坐标进行片元差值
                             for k in pairs(frag1) do
                                 fragment[k] = frag1[k] * bcClip.x + frag2[k] * bcClip.y + frag3[k] * bcClip.z
@@ -333,7 +333,7 @@ function Renderer:GenFragmentInput(input)
     local screenX,screenY = mat4x4.mulXYZW(self.screenMatrix,canonicalPos.x,canonicalPos.y,0,1)
     fragmentShaderInput.screenPos = vec2.new(luaMath.floor(screenX) + 0.5,luaMath.floor(screenY) + 0.5)
     fragmentShaderInput.wClip = w
-    fragmentShaderInput.zClip = clipPos.z
+    fragmentShaderInput.zCanon = canonicalPos.z
     return fragmentShaderInput
 end
 

@@ -13,8 +13,8 @@
 ---@class FragmentShaderInput : VertexShaderOutput
 ---@field screenPos vector2
 ---@field canonicalPos vector3
----@field zClip number 保存裁剪空间中顶点坐标的z分量
 ---@field wClip number 保存裁剪空间中顶点坐标的w分量
+---@field zCanon number 保存齐次空间中顶点坐标的z分量
 
 ---着色器基类
 ---@class Shader
