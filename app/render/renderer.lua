@@ -266,12 +266,12 @@ function Renderer:Draw()
                             if self.enabledDepthWrite then
                                 self.depthBuffer[x][y] = fragmentDepth
                             end
-                            --将像素的重心坐标(屏幕空间)转换到裁剪空间中
-                            local bcClip = vec3.new(bcScreenX / frag1.wClip,bcScreenY / frag2.wClip,bcScreenZ / frag3.wClip)
-                            bcClip = bcClip / (bcClip.x + bcClip.y + bcClip.z)
+                            --将像素的重心坐标(屏幕空间)转换到观察空间中
+                            local bcView = vec3.new(bcScreenX / frag1.wClip,bcScreenY / frag2.wClip,bcScreenZ / frag3.wClip)
+                            bcView = bcView / (bcView.x + bcView.y + bcView.z)
                             --使用裁剪空间重心坐标进行片元差值
                             for k in pairs(frag1) do
-                                fragment[k] = frag1[k] * bcClip.x + frag2[k] * bcClip.y + frag3[k] * bcClip.z
+                                fragment[k] = frag1[k] * bcView.x + frag2[k] * bcView.y + frag3[k] * bcView.z
                             end
                             --执行片元着色器
                             local dstColorR,dstColorG,dstColorB,dstColorA = self.shader:FragmentShader(fragment)
