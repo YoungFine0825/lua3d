@@ -13,8 +13,7 @@
 ---@class FragmentShaderInput : VertexShaderOutput
 ---@field screenPos vector2
 ---@field canonicalPos vector3
----@field wClip number 保存裁剪空间中顶点坐标的w分量
----@field zCanon number 保存齐次空间中顶点坐标的z分量
+---@field w number 保存乘以投影矩阵之前顶点坐标的z分量(虽然投影矩阵会符号取反转换到左手坐标系，但与原点的相对位置是不变的)
 
 ---着色器基类
 ---@class Shader

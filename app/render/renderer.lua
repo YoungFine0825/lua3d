@@ -234,6 +234,7 @@ function Renderer:Draw()
     end
     local pixelCnt = 0
     local fragment = {}
+    local zRange = {99,-99}
     for i = 1,drawableTriangleCnt do
         local startIdx = drawableTriangles[i] * 3
         local vertexIdx1 = indicesData[startIdx + 1]
@@ -242,6 +243,7 @@ function Renderer:Draw()
         local frag1 = fragmentsCache[vertexIdx1]
         local frag2 = fragmentsCache[vertexIdx2]
         local frag3 = fragmentsCache[vertexIdx3]
+        --
         if frag1 and frag2 and frag3 then
             local p1 = frag1.screenPos
             local p2 = frag2.screenPos
@@ -257,17 +259,17 @@ function Renderer:Draw()
                     local bcScreenY = CalcuSignedTriangleArea(p3,p1,x,y) / triArea2
                     local bcScreenZ = CalcuSignedTriangleArea(p1,p2,x,y) / triArea3
                     if bcScreenX >= 0 and bcScreenY >= 0 and bcScreenZ >= 0 then
-                        --使用重心坐标对三角形三个（齐次空间下）顶点的z坐标进行差值得出该像素的深度
-                        local fragmentDepth = bcScreenX * frag1.zCanon + bcScreenY * frag2.zCanon + bcScreenZ * frag3.zCanon
+                        --使用重心坐标对三角形三个（观察空间下）顶点的z坐标进行差值得出该像素的深度
+                        local fragmentDepth = bcScreenX * frag1.w + bcScreenY * frag2.w + bcScreenZ * frag3.w
                         local depthBuffer = self.depthBuffer[x][y]
-                        --先进行深度测试（深度值越大表示越接近视点）
-                        if depthBuffer == 0 or fragmentDepth > depthBuffer then
+                        --先进行深度测试（深度值越小表示越接近视点）
+                        if depthBuffer == 0 or fragmentDepth < depthBuffer then
                             --写入深度值
                             if self.enabledDepthWrite then
                                 self.depthBuffer[x][y] = fragmentDepth
                             end
                             --将像素的重心坐标(屏幕空间)转换到观察空间中
-                            local bcView = vec3.new(bcScreenX / frag1.wClip,bcScreenY / frag2.wClip,bcScreenZ / frag3.wClip)
+                            local bcView = vec3.new(bcScreenX / frag1.w,bcScreenY / frag2.w,bcScreenZ / frag3.w)
                             bcView = bcView / (bcView.x + bcView.y + bcView.z)
                             --使用裁剪空间重心坐标进行片元差值
                             for k in pairs(frag1) do
@@ -332,7 +334,7 @@ function Renderer:GenFragmentInput(input)
     --变换到屏幕坐标
     local screenX,screenY = mat4x4.mulXYZW(self.screenMatrix,canonicalPos.x,canonicalPos.y,0,1)
     fragmentShaderInput.screenPos = vec2.new(luaMath.floor(screenX) + 0.5,luaMath.floor(screenY) + 0.5)
-    fragmentShaderInput.wClip = w
+    fragmentShaderInput.w = w
     fragmentShaderInput.zCanon = canonicalPos.z
     return fragmentShaderInput
 end
