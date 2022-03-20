@@ -127,9 +127,9 @@ function Renderer:WritePixel(x,y,r,g,b)
     end
     local pixel = self.pixelBuffer[x][y]
     if pixel then
-        pixel[1] = r
-        pixel[2] = g
-        pixel[3] = b
+        pixel[1] = luaMath.max(0,math.min(1,r))
+        pixel[2] = luaMath.max(0,math.min(1,g))
+        pixel[3] = luaMath.max(0,math.min(1,b))
     end
 end
 
@@ -234,7 +234,6 @@ function Renderer:Draw()
     end
     local pixelCnt = 0
     local fragment = {}
-    local zRange = {99,-99}
     for i = 1,drawableTriangleCnt do
         local startIdx = drawableTriangles[i] * 3
         local vertexIdx1 = indicesData[startIdx + 1]
@@ -259,10 +258,11 @@ function Renderer:Draw()
                     local bcScreenY = CalcuSignedTriangleArea(p3,p1,x,y) / triArea2
                     local bcScreenZ = CalcuSignedTriangleArea(p1,p2,x,y) / triArea3
                     if bcScreenX >= 0 and bcScreenY >= 0 and bcScreenZ >= 0 then
-                        --使用重心坐标对三角形三个（观察空间下）顶点的z坐标进行差值得出该像素的深度
-                        local fragmentDepth = bcScreenX * frag1.w + bcScreenY * frag2.w + bcScreenZ * frag3.w
+                        --使用重心坐标对三角形三个（观察空间下）顶点的w分量的倒数进行差值得出该像素的深度。
+                        --1/w依然是线性的，能确保正确透视关系，同时取值范围是-1~1可以直接作为颜色保存。
+                        local fragmentDepth = 1 - (bcScreenX * frag1.rhw + bcScreenY * frag2.rhw + bcScreenZ * frag3.rhw)
                         local depthBuffer = self.depthBuffer[x][y]
-                        --先进行深度测试（深度值越小表示越接近视点）
+                        --先进行深度测试（深度值越大表示越接近视点）
                         if depthBuffer == 0 or fragmentDepth < depthBuffer then
                             --写入深度值
                             if self.enabledDepthWrite then
@@ -335,7 +335,7 @@ function Renderer:GenFragmentInput(input)
     local screenX,screenY = mat4x4.mulXYZW(self.screenMatrix,canonicalPos.x,canonicalPos.y,0,1)
     fragmentShaderInput.screenPos = vec2.new(luaMath.floor(screenX) + 0.5,luaMath.floor(screenY) + 0.5)
     fragmentShaderInput.w = w
-    fragmentShaderInput.zCanon = canonicalPos.z
+    fragmentShaderInput.rhw = 1 / w
     return fragmentShaderInput
 end
 
