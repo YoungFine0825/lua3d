@@ -252,13 +252,16 @@ function Renderer:Draw()
             local minX,maxX,minY,maxY = self:CalcuTriangleBound(p1,p2,p3)
             for y = minY,maxY do
                 for x = minX,maxX do
-                    --求像素在三角形中的重心坐标
-                    local a = CalcuSignedTriangleArea(p2,p3,x,y) / triArea1
-                    local b = CalcuSignedTriangleArea(p3,p1,x,y) / triArea2
-                    local c = CalcuSignedTriangleArea(p1,p2,x,y) / triArea3
-                    if a >= 0 and b >= 0 and c >= 0 then
-                        --使用重心坐标对齐次坐标的w分量进行插值，得出的值作为该片元的深度值
-                        local fragmentDepth = frag1.rhw * a + frag2.rhw * b + frag3.rhw * c
+                    --求像素在屏幕空间中的重心坐标
+                    local bcScreenX = CalcuSignedTriangleArea(p2,p3,x,y) / triArea1
+                    local bcScreenY = CalcuSignedTriangleArea(p3,p1,x,y) / triArea2
+                    local bcScreenZ = CalcuSignedTriangleArea(p1,p2,x,y) / triArea3
+                    if bcScreenX >= 0 and bcScreenY >= 0 and bcScreenZ >= 0 then
+                        --将像素的重心坐标(屏幕空间)转换到裁剪空间中
+                        local bcClip = vec3.new(bcScreenX / frag1.wClip,bcScreenY / frag2.wClip,bcScreenZ / frag3.wClip)
+                        bcClip = bcClip / (bcClip.x + bcClip.y + bcClip.z)
+                        --使用裁剪空间重心坐标对三角形三个顶点（裁剪空间）的z坐标进行差值得出该像素的深度
+                        local fragmentDepth = bcClip.x * frag1.zClip + bcClip.y * frag2.zClip + bcClip.z * frag3.zClip
                         local depthBuffer = self.depthBuffer[x][y]
                         --先进行深度测试（深度值越大表示越接近视点）
                         if depthBuffer == 0 or fragmentDepth > depthBuffer then
@@ -266,9 +269,9 @@ function Renderer:Draw()
                             if self.enabledDepthWrite then
                                 self.depthBuffer[x][y] = fragmentDepth
                             end
-                            --使用重心坐标进行片元差值
+                            --使用裁剪空间重心坐标进行片元差值
                             for k in pairs(frag1) do
-                                fragment[k] = frag1[k] * a + frag2[k] * b + frag3[k] * c
+                                fragment[k] = frag1[k] * bcClip.x + frag2[k] * bcClip.y + frag3[k] * bcClip.z
                             end
                             --执行片元着色器
                             local dstColorR,dstColorG,dstColorB,dstColorA = self.shader:FragmentShader(fragment)
@@ -320,19 +323,17 @@ function Renderer:GenFragmentInput(input)
     --local ve3One = vec3.one()
     --
     for k,v in pairs(input) do
-        --通过做一次乘法达到克隆的目的
-        fragmentShaderInput[k] = v --* ve3One
+        fragmentShaderInput[k] = v
     end
     local clipPos = input.clipPos
-    --计算 w 的倒数：Reciprocal of the Homogeneous W
-    local w = input.clipPos.w
-    local rhw = 1 / (w ~= 0 and w or 1)
+    local w = (clipPos.w ~= 0 and clipPos.w or 1)
     --裁剪空间坐标转为齐次空间坐标
-    local canonicalPos = vec3.new(clipPos.x * rhw,clipPos.y * rhw,clipPos.z * rhw)
+    local canonicalPos = vec3.new(clipPos.x / w,clipPos.y / w,clipPos.z / w)
     --变换到屏幕坐标
     local screenX,screenY = mat4x4.mulXYZW(self.screenMatrix,canonicalPos.x,canonicalPos.y,0,1)
     fragmentShaderInput.screenPos = vec2.new(luaMath.floor(screenX) + 0.5,luaMath.floor(screenY) + 0.5)
-    fragmentShaderInput.rhw = rhw
+    fragmentShaderInput.wClip = w
+    fragmentShaderInput.zClip = clipPos.z
     return fragmentShaderInput
 end
 
