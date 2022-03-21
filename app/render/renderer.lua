@@ -258,19 +258,20 @@ function Renderer:Draw()
                     local bcScreenY = CalcuSignedTriangleArea(p3,p1,x,y) / triArea2
                     local bcScreenZ = CalcuSignedTriangleArea(p1,p2,x,y) / triArea3
                     if bcScreenX >= 0 and bcScreenY >= 0 and bcScreenZ >= 0 then
-                        --使用重心坐标对三角形三个（观察空间下）顶点的w分量的倒数进行差值得出该像素的深度。
-                        --1/w依然是线性的，能确保正确透视关系，同时取值范围是-1~1可以直接作为颜色保存。
-                        local fragmentDepth = 1 - (bcScreenX * frag1.rhw + bcScreenY * frag2.rhw + bcScreenZ * frag3.rhw)
+                        --计算透视校正插值系数。算法参考虎书P195
+                        local bcView = vec3.new(bcScreenX / frag1.w,bcScreenY / frag2.w,bcScreenZ / frag3.w)
+                        bcView = bcView / (bcView.x + bcView.y + bcView.z)
+                        --
+                        --根据NDC空间坐标的z分量计算像素深度
+                        local fragmentDepth = bcView.x * frag1.zCanon + bcView.y * frag2.zCanon + bcView.z * frag3.zCanon
+                        --
                         local depthBuffer = self.depthBuffer[x][y]
                         --先进行深度测试（深度值越大表示越接近视点）
-                        if depthBuffer == 0 or fragmentDepth < depthBuffer then
+                        if depthBuffer == 0 or fragmentDepth > depthBuffer then
                             --写入深度值
                             if self.enabledDepthWrite then
                                 self.depthBuffer[x][y] = fragmentDepth
                             end
-                            --将像素的重心坐标(屏幕空间)转换到观察空间中
-                            local bcView = vec3.new(bcScreenX / frag1.w,bcScreenY / frag2.w,bcScreenZ / frag3.w)
-                            bcView = bcView / (bcView.x + bcView.y + bcView.z)
                             --使用裁剪空间重心坐标进行片元差值
                             for k in pairs(frag1) do
                                 fragment[k] = frag1[k] * bcView.x + frag2[k] * bcView.y + frag3[k] * bcView.z
@@ -332,10 +333,10 @@ function Renderer:GenFragmentInput(input)
     --裁剪空间坐标转为齐次空间坐标
     local canonicalPos = vec3.new(clipPos.x / w,clipPos.y / w,clipPos.z / w)
     --变换到屏幕坐标
-    local screenX,screenY = mat4x4.mulXYZW(self.screenMatrix,canonicalPos.x,canonicalPos.y,0,1)
+    local screenX,screenY,screenZ = mat4x4.mulXYZW(self.screenMatrix,canonicalPos.x,canonicalPos.y,canonicalPos.z,1)
     fragmentShaderInput.screenPos = vec2.new(luaMath.floor(screenX) + 0.5,luaMath.floor(screenY) + 0.5)
     fragmentShaderInput.w = w
-    fragmentShaderInput.rhw = 1 / w
+    fragmentShaderInput.zCanon = canonicalPos.z
     return fragmentShaderInput
 end
 

@@ -13,7 +13,7 @@ require("app/shadertest")
 require("app/vertexobjecthelper")
 
 --
-local bgColor = Color.raywhite
+local bgColor = Color.new(59 / 255,1,1,1)
 local winWid = SCREEN_WIDTH
 local winHei = SCREEN_HEIGHT
 
@@ -75,7 +75,7 @@ function AppRoot:OnLoad()
     shader:SetVector3('viewPoint',vector3.new(0,0,0))
     --
     shader:SetColor('specularColor',Color.white)
-    shader:SetNumber('gloss',10)
+    shader:SetNumber('gloss',40)
     --设置纹理
     shader:SetTexture2d('albedo',texData)
     --绑定Shader对象
