@@ -278,12 +278,23 @@ function Renderer:Draw()
                             end
                             --执行片元着色器
                             local dstColorR,dstColorG,dstColorB,dstColorA = self.shader:FragmentShader(fragment)
+                            --曝光色调映射
+                            local exposure = 3
+                            dstColorR = 1 - luaMath.exp(-1 * dstColorR * exposure)
+                            dstColorG = 1 - luaMath.exp(-1 * dstColorG * exposure)
+                            dstColorB = 1 - luaMath.exp(-1 * dstColorB * exposure)
+                            --
                             --执行Alpha融合
                             local alphaFactor = self.enabledAlphaBlend and dstColorA or 1
                             local srcColor = self.pixelBuffer[x][y]
                             local finalR = srcColor[1] * (1 - alphaFactor) + dstColorR * alphaFactor
                             local finalG = srcColor[2] * (1 - alphaFactor) + dstColorG * alphaFactor
                             local finalB = srcColor[3] * (1 - alphaFactor) + dstColorB * alphaFactor
+                            --Gamma校正
+                            --finalR = luaMath.pow(finalR,1 / 2.2)
+                            --finalG = luaMath.pow(finalG,1 / 2.2)
+                            --finalB = luaMath.pow(finalB,1 / 2.2)
+                            --
                             --把最终颜色写入像素缓存
                             self:WritePixel(x,y,finalR,finalG,finalB)
                             --
