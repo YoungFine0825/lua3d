@@ -155,7 +155,7 @@ function matrix4x4.perspective(fov,aspect,near,far)
     local ret = matrix4x4.new(
            cotFov / aspect,0,0,0,
             0,cotFov,0,0,
-            0,0,(near + far) / (near - far) * -1,(2 * near * far)/(near - far) * -1,
+            0,0,(near + far) / (far - near) * -1,(2 * near * far)/(far - near) * -1,
             0,0,-1,0
     )
     return ret

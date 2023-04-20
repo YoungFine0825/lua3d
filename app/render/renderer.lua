@@ -64,7 +64,7 @@ function Renderer:Init(pixelBufferWid,pixelBufferHei)
         self.depthBuffer[w] = {}
         for h = 0,pixelBufferHei - 1 do
             self.pixelBuffer[w][h] = {0,0,0}
-            self.depthBuffer[w][h] = 0
+            self.depthBuffer[w][h] = 1.0
         end
     end
 end
@@ -115,7 +115,7 @@ function Renderer:ClearPixelBuffer(color)
             p[1] = color.r
             p[2] = color.g
             p[3] = color.b
-            self.depthBuffer[x][y] = 0
+            self.depthBuffer[x][y] = 1.0
         end
     end
 end
@@ -266,13 +266,13 @@ function Renderer:Draw()
                         local fragmentDepth = bcView.x * frag1.zCanon + bcView.y * frag2.zCanon + bcView.z * frag3.zCanon
                         --
                         local depthBuffer = self.depthBuffer[x][y]
-                        --先进行深度测试（深度值越大表示越接近视点）
-                        if depthBuffer == 0 or fragmentDepth > depthBuffer then
+                        --先进行深度测试（深度值越小越接近观察点）
+                        if fragmentDepth < depthBuffer then
                             --写入深度值
                             if self.enabledDepthWrite then
                                 self.depthBuffer[x][y] = fragmentDepth
                             end
-                            --使用裁剪空间重心坐标进行片元差值
+                            --透视校正插值
                             for k in pairs(frag1) do
                                 fragment[k] = frag1[k] * bcView.x + frag2[k] * bcView.y + frag3[k] * bcView.z
                             end
